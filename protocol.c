@@ -140,3 +140,10 @@ void remove_newline(char *str,int len){
          str[i] = '\0';
    }
 }
+
+void remove_extraneous(char *str,int len){
+   for(int i = 0;i<len;i++){
+      if(str[i]<32 || str[i]>125)
+         str[i] = '\0';
+   }
+}

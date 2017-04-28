@@ -9,6 +9,8 @@
 #define NAME_SIZE 80
 
 
+#define CLOSE_PROT 5
+
 #define SHARE_PUB_KEY_PROT 10 ///server shares public key with client unencrypted
 #define REGISTER_PROT 11 ///client registers public key and username with server unencrypted
 #define REGISTER_PROT_ACK 12
@@ -27,7 +29,7 @@
 #define REQ_KEY_ACK 41
 #define REQ_KEY_NACK 42
 
-#define CLOSE_PROT 5
+#define LIST_ONLINE_PROT 50
 
 typedef struct data_packet data_packet;
 struct data_packet{
@@ -60,6 +62,7 @@ void raw_data_to_data_packet(data_packet *packet,uint8_t protocol,uint8_t *data,
 void write_msg_metadata_to_data(uint8_t *data,msg_metadata *meta);
 void read_msg_metadata_from_data(uint8_t *data,msg_metadata *meta);
 void remove_newline(char *str,int len);
+void remove_extraneous(char *str,int len);
 void fill_msg_metadata(msg_metadata *msg_m,char *src_name,char *rcpt_name);
 void read_msg_metadata(msg_metadata *msg_m,char *src_name,char *rcpt_name);
 void raw_data_to_dual_enc_packet(data_packet *packet,uint8_t protocol,uint8_t *data,metadata *meta,mpz_t metadata_public_key,mpz_t data_public_key);

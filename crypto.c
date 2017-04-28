@@ -39,7 +39,7 @@ void gen_rand_prime(mpz_t key, int size){
 			mpz_add(key,key,offset);
 			mpz_clear(offset);
 		}
-		isprime = (mpz_probab_prime_p(key,100)==1);
+		isprime = (mpz_probab_prime_p(key,200)==1);
 	}
 }
 

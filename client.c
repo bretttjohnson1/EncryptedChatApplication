@@ -13,6 +13,7 @@
 #include <string.h>
 #include "bool.h"
 #include <pthread.h>
+#include <errno.h>
 
 #define PROTOCOL "tcp"
 int setup (char * hoststr, char *portstr);
@@ -65,20 +66,18 @@ int main(int argc, char **argv){
 	sprintf(mainportstr, "%d", currentport);
 	sprintf(mailportstr, "%d", currentport+1);
 	uint32_t socket_descriptor = setup(hoststr,mainportstr);
-
+	uint32_t mail_socket_descriptor = setup(hoststr,mailportstr);
 	mpz_t server_public_key;
 	rec_pub_key_from_server(server_public_key,socket_descriptor);
-	printf("Setup Write Socket %d\n",currentport);
+   printf("Welcome to Brett's encrypted chat server\nType /help for a list of commands\n");
 
-	int mail_socket_descriptor = setup(hoststr,mailportstr);
-	printf("Fully setup %d %d\n",socket_descriptor,mail_socket_descriptor );
 	command_loop(socket_descriptor,mail_socket_descriptor, server_public_key);
 }
 
 void command_loop(int socket_descriptor,int mail_socket_descriptor,mpz_t server_public_key){
 	bool exit = false;
 	bool logged_in = false;
-	char *loggedinusername;
+	char loggedinusername[NAME_SIZE];
 	pthread_t mail_thread_tid;
 	pthread_attr_t mail_thread_attr;
 	while(!exit) {
@@ -129,7 +128,7 @@ void command_loop(int socket_descriptor,int mail_socket_descriptor,mpz_t server_
 						int ack = receive_ack(socket_descriptor);
 						if(ack == LOGIN_ACK) {
 							printf("Successfuly Logged In as %s\n",unamecpy);
-							loggedinusername = unamecpy;
+							strcpy(loggedinusername,unamecpy);
 							logged_in = true;
 							pthread_attr_init(&mail_thread_attr);
 							pthread_create(&mail_thread_tid, &mail_thread_attr, mail_handler, &mail_socket_descriptor);
@@ -162,7 +161,7 @@ void command_loop(int socket_descriptor,int mail_socket_descriptor,mpz_t server_
 					if(strlen(original_cmd)-pos>0) {
 						remove_newline(rcpt_cpy, strlen(rcpt_cpy));
 						remove_newline(rcpt, strlen(rcpt));
-						send_msg(loggedinusername, rcpt, msg, socket_descriptor, server_public_key);
+						send_msg(loggedinusername, rcpt_cpy, msg, socket_descriptor, server_public_key);
 					}else{
 						printf("Need to include message\n");
 					}
@@ -172,7 +171,35 @@ void command_loop(int socket_descriptor,int mail_socket_descriptor,mpz_t server_
 			}else{
 				printf("Need to log in before sending messages\n");
 			}
-		}else if(strcasecmp(command,"/exit")==0) {
+		}else if(strcasecmp(command,"/mall")==0) {
+			if(logged_in) {
+            send_empty_cmd(socket_descriptor, LIST_ONLINE_PROT);
+   			data_packet read_packet;
+   			read_data(&read_packet, sizeof(data_packet), socket_descriptor);
+   			remove_newline((char *)read_packet.data, MAX_DATA_SIZE);
+   			char rcp_data[MAX_DATA_SIZE];
+            strcpy(rcp_data, (char *)read_packet.data);
+
+				char *rcpt = strtok(rcp_data," ");
+				while(rcpt!=NULL) {
+					char rcpt_cpy[strlen(rcpt)+1];
+					strcpy(rcpt_cpy, rcpt);
+					int pos = strlen(command)+1;
+					char *msg = original_cmd+pos;
+					if(strlen(original_cmd)-pos>0) {
+						remove_newline(rcpt_cpy, strlen(rcpt_cpy));
+						remove_newline(rcpt, strlen(rcpt));
+						send_msg(loggedinusername, rcpt_cpy, msg, socket_descriptor, server_public_key);
+					}else{
+						printf("Need to include message\n");
+                  break;
+					}
+               rcpt = strtok(NULL," ");
+				}
+			}else{
+				printf("Need to log in before sending messages\n");
+			}
+		}  else if(strcasecmp(command,"/exit")==0) {
 			send_ack(socket_descriptor,CLOSE_PROT);
 			return;
 		}else if(strcasecmp(command,"/genkeys")==0) {
@@ -185,7 +212,23 @@ void command_loop(int socket_descriptor,int mail_socket_descriptor,mpz_t server_
 			}else{
 				printf("Aborted\n");
 			}
-		}else{
+		}else if(strcasecmp(command,"/listonline")==0) {
+			send_empty_cmd(socket_descriptor, LIST_ONLINE_PROT);
+			data_packet read_packet;
+			read_data(&read_packet, sizeof(data_packet), socket_descriptor);
+			remove_newline((char *)read_packet.data, MAX_DATA_SIZE);
+			printf("Currently Online: %s\n",read_packet.data);
+		}else if(strcasecmp(command,"/help")==0){
+         printf("Welcome to Brett's encrypted chat server\n");
+         printf("If you are not registered, type /register [username] to add yourself to the server\n");
+         printf("Once you have registered,you can use /login [username to log in at any time under the same username\n");
+         printf("If you wish to register a new username, type /genkeys and then register another username\nBe careful, once you generate new keys, the old user is gone forever\n");
+         printf("To see who is online, type /listonline\n");
+         printf("To message an online user, type /msg [rcpt] [message]\n");
+         printf("To message all online users, type /malll [message]\n");
+         printf("To exit, type /exit\n");
+
+      }else{
 			printf("Invalid cmd type help for list\n");
 		}
 	}
@@ -204,10 +247,7 @@ void send_msg(char* username,char *dest,char *msg,uint32_t socket_descriptor,mpz
 	if(read_key) {
 		data_packet packet;
 		msg_metadata msg_m;
-		strcpy((char *)msg_m.src_name, username);
-		strcpy((char *)msg_m.rcpt_name, dest);
-		msg_m.src_name_len = strlen(username)+1;
-		msg_m.rcpt_name_len = strlen(dest)+1;
+		fill_msg_metadata(&msg_m, username, dest);
 		metadata meta;
 		meta.data_len = strlen(msg)+1;
 
@@ -216,7 +256,7 @@ void send_msg(char* username,char *dest,char *msg,uint32_t socket_descriptor,mpz
 		write_data(&packet, sizeof(data_packet), socket_descriptor);
 		mpz_clear(public_key);
 	}else{
-      printf("Destination name not found\n");
+		printf("Destination name not found\n");
 	}
 }
 
@@ -281,7 +321,6 @@ void handle_internal_msg(data_packet *packet){
 	read_local_public_key_from_file(public_key);
 	mpz_t private_key;
 	read_local_private_key_from_file(private_key);
-	//decrypt_block(encmsg, data, private_key, public_key);
 	uint8_t protocol;
 	uint8_t data[MAX_DATA_SIZE];
 	metadata meta;
@@ -292,7 +331,7 @@ void handle_internal_msg(data_packet *packet){
 	char rcpt_name[NAME_SIZE];
 	read_msg_metadata(&msg_m, src_name, rcpt_name);
 
-	printf("(%s): %s",rcpt_name,data);
+	printf("(%s): %s",src_name,data);
 }
 
 int setup (char * hoststr, char *portstr)
@@ -322,9 +361,18 @@ int setup (char * hoststr, char *portstr)
 		errexit("cannot create socket",NULL);
 
 	/* connect the socket */
-	if (connect (sd, (struct sockaddr *)&sin, sizeof(sin)) < 0)
-		errexit ("cannot connect", NULL);
-
+	int ret = connect (sd, (struct sockaddr *)&sin, sizeof(sin));
+	int count = 0;
+	if(ret < 0 ) {
+		while (ret < 0) {
+			sleep(1);
+			ret = connect (sd, (struct sockaddr *)&sin, sizeof(sin));
+			printf("Failed to connect trying again\n");
+			count++;
+			if(count>10)
+				errexit("cannot connect: %s", strerror(errno));
+		}
+	}
 	return sd;
 }
 

@@ -14,6 +14,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include "hashmap.h"
+#include <errno.h>
 
 #define QLEN 1
 #define PROTOCOL "tcp"
@@ -24,14 +25,14 @@ void response_loop(uint32_t socket_descriptor,uint32_t mail_socket_descriptor);
 void handle_register(data_packet *data_packt,uint32_t socket_descriptor);
 void send_pub_key_to_client(mpz_t pub_key,uint32_t socket_descriptor);
 void read_register_name(data_packet *data_packt,char* username,int *len, mpz_t pub_key);
-bool handle_login(data_packet *data_packet,uint32_t socket_descriptor,uint32_t mail_socket_descriptor);
+bool handle_login(data_packet *data_packet,char* username,uint32_t socket_descriptor,uint32_t mail_socket_descriptor);
 void handle_msg(data_packet *packet,uint32_t mail_socket_descriptor);
 void send_internal_msg(data_packet *packet,uint32_t mail_socket_descriptor);
 void handle_req_key(data_packet packet,uint32_t socket_descriptor);
+void handle_list_online(data_packet packet,uint32_t socket_descriptor);
 
 sem_t *socket_write_sem;
 sem_t *socket_map_sem;
-hashmap *sem_map;
 hashmap *socket_map;
 int init_len_hashmap = 40;
 
@@ -67,13 +68,15 @@ int main(int argc,char **argv){
 	}
 	sem_init(socket_map_sem, 0, 1);
 
-	sem_map = hash_setup(init_len_hashmap);
 	socket_map = hash_setup(init_len_hashmap);
-	if(sem_map == NULL ||socket_map == NULL) {
+	if(socket_map == NULL) {
 		errexit("Not Enough memory for hashmap", "");
 	}
-	uint32_t currentport= atoi(portstr)+1;
+
 	while(1) {
+      uint16_t rand;
+      fillrandom(&rand, sizeof(rand));
+      uint32_t currentport= atoi(portstr)+rand%2000;
 		//send the connection ports
 		printf("Setting Up At:%s\n",portstr);
 		uint32_t port_sock_desc = setup(portstr);
@@ -82,18 +85,17 @@ int main(int argc,char **argv){
 
 		pthread_t tid;
 		pthread_attr_t attr;
-		char tmpportstr[NAME_SIZE];
-		sprintf(tmpportstr, "%d", currentport);
-		uint32_t socket_descriptor = setup(tmpportstr);
+      char mainportstr[NAME_SIZE];
+   	char mailportstr[NAME_SIZE];
+   	sprintf(mainportstr, "%d", currentport);
+   	sprintf(mailportstr, "%d", currentport+1);
+
+      uint32_t socket_descriptor = setup(mainportstr);
 		printf("Setup Once\n");
-		mpz_t public_key;
-		read_local_public_key_from_file(public_key);
-		send_pub_key_to_client(public_key,socket_descriptor);
-		mpz_clear(public_key);
-		sprintf(tmpportstr, "%d",currentport+1);
-		uint32_t mail_socket_descriptor = setup(tmpportstr);
-		currentport+=2;
-		printf("Setup Twice\n");
+
+      uint32_t mail_socket_descriptor = setup(mailportstr);
+      printf("Setup Twice\n");
+
 		pthread_attr_init(&attr);
 		uint32_t socket_descriptors[] = {socket_descriptor,mail_socket_descriptor};
 		pthread_create(&tid, &attr, thread_response_loop, &socket_descriptors);
@@ -103,12 +105,19 @@ int main(int argc,char **argv){
 
 void *thread_response_loop(void *sd){
 	uint32_t *socket_descriptor = sd;
+
+   mpz_t public_key;
+   read_local_public_key_from_file(public_key);
+   send_pub_key_to_client(public_key,*socket_descriptor);
+   mpz_clear(public_key);
+
 	response_loop(socket_descriptor[0],socket_descriptor[1]);
 	return NULL;
 }
 void response_loop(uint32_t socket_descriptor,uint32_t mail_socket_descriptor){
 	bool exit  = false;
 	bool logged_in = false;
+   char username[NAME_SIZE];
 	while(!exit) {
 		data_packet packet;
 		int ret = read_data(&packet,sizeof(data_packet),socket_descriptor);
@@ -124,7 +133,7 @@ void response_loop(uint32_t socket_descriptor,uint32_t mail_socket_descriptor){
 		case LOGIN_PROT:
 			if(!logged_in) {
 				send_ack(socket_descriptor, LOGIN_ACK);
-				logged_in = handle_login(&packet,socket_descriptor,mail_socket_descriptor);
+				logged_in = handle_login(&packet,username,socket_descriptor,mail_socket_descriptor);
 			}else{
 				send_ack(socket_descriptor, LOGIN_NACK);
 			}
@@ -135,11 +144,45 @@ void response_loop(uint32_t socket_descriptor,uint32_t mail_socket_descriptor){
 		case REQ_KEY_PROT:;
 			handle_req_key(packet,socket_descriptor);
 			break;
+      case LIST_ONLINE_PROT:
+         handle_list_online(packet, socket_descriptor);
+         break;
 		case CLOSE_PROT:
 			exit = true;
 			break;
 		}
 	}
+   if(logged_in)
+      hash_remove(*socket_map, username, strlen(username));
+}
+
+void handle_list_online(data_packet packet,uint32_t socket_descriptor){
+   uint8_t buffer[MAX_DATA_SIZE];
+   //TODO: handle longer than MAX_DATA_SIZE names
+   int index = 0;
+   for(int32_t j = 0; j<socket_map->length; j++) {
+		node *currentnode = socket_map->hashmap_pointer+j;
+		while(currentnode->isfull) {
+         char namestr[NAME_SIZE];
+         strcpy(namestr, (char *)currentnode->keydata);
+         remove_extraneous(namestr, strlen(namestr));
+         for(int i = 0;i<strlen(namestr);i++){
+            buffer[index+i] = namestr[i];
+         }
+         buffer[index+strlen(namestr)] = ' ';
+         index+=strlen(namestr)+1;
+		   if(currentnode->haschild) {
+				currentnode = currentnode->next;
+			}else{
+				break;
+			}
+		}
+	}
+   buffer[index] = '\0';
+   data_packet newpacket;
+   metadata meta;
+   raw_data_to_data_packet(&newpacket, LIST_ONLINE_PROT, buffer, &meta,NULL);
+   write_data(&newpacket, sizeof(data_packet), socket_descriptor);
 }
 
 void handle_req_key(data_packet packet,uint32_t socket_descriptor){
@@ -185,21 +228,24 @@ void handle_msg(data_packet *packet,uint32_t mail_socket_descriptor){
 	uint8_t uname[NAME_SIZE];
 	uint8_t rcpt_name[NAME_SIZE];
 	read_msg_metadata(&msg_m, (char *)uname, (char *)rcpt_name);
-	strcat((char *)uname,"_pub.key");
-	char keyfilename[strlen((char *)uname)+1];
-	for(int i = 0; i<strlen((char *)uname); i++) {
-		keyfilename[i] = uname[i];
+   char rcpt_cpy[NAME_SIZE];
+   strcpy(rcpt_cpy, (char*)rcpt_name);
+	strcat((char *)rcpt_name,"_pub.key");
+
+	char keyfilename[strlen((char *)rcpt_name)+1];
+	for(int i = 0; i<strlen((char *)rcpt_name); i++) {
+		keyfilename[i] = rcpt_name[i];
 	}
-	keyfilename[strlen((char *)uname)] = '\0';
+	keyfilename[strlen((char *)rcpt_name)] = '\0';
 
 	mpz_t user_public_key;
 	read_key_from_file(user_public_key, keyfilename);
 	convert_dual_enc_packet_enc_packet(packet, public_key, private_key, user_public_key);
-	uint32_t *sockdesc = hash_get(*socket_map, keyfilename, strlen(keyfilename));
+	uint32_t *sockdesc = hash_get(*socket_map, rcpt_cpy, strlen(rcpt_cpy));
 	if(sockdesc != NULL) {
-		printf("Found user %s\n",keyfilename);
+		printf("Found user %s\n",rcpt_cpy);
 	}else{
-		printf("Err No user found\n");
+		printf("Err No user found %s\n",rcpt_cpy);
 		return;
 	}
 	send_internal_msg(packet,*sockdesc);
@@ -211,7 +257,7 @@ void send_internal_msg(data_packet *packet,uint32_t mail_socket_descriptor){
 	write_data(packet, sizeof(data_packet), mail_socket_descriptor);
 }
 
-bool handle_login(data_packet *data_packet,uint32_t socket_descriptor,uint32_t mail_socket_descriptor){
+bool handle_login(data_packet *data_packet,char *username,uint32_t socket_descriptor,uint32_t mail_socket_descriptor){
 	bool logged_in = false;
 	msg_metadata msg_m;
 	uint8_t data[MAX_DATA_SIZE];
@@ -222,6 +268,8 @@ bool handle_login(data_packet *data_packet,uint32_t socket_descriptor,uint32_t m
 	uint8_t uname[NAME_SIZE];
 	uint8_t rcpt_name[NAME_SIZE];
 	read_msg_metadata(&msg_m, (char *)uname,(char *)rcpt_name);
+   char uname_cpy[NAME_SIZE];
+   strcpy(uname_cpy, (char*)uname);
 	strcat((char *)uname,"_pub.key");
 	char keyfilename[strlen((char *)uname)+1];
 	for(int i = 0; i<strlen((char *)uname); i++) {
@@ -249,13 +297,19 @@ bool handle_login(data_packet *data_packet,uint32_t socket_descriptor,uint32_t m
 		}
 		if(equal_tokens) {
 			send_ack(socket_descriptor, LOGIN_ACK);
-			printf("user %s successfuly logged in\n", uname);
+         for(int i = 0;i<NAME_SIZE;i++){
+            username[i] = uname_cpy[i];
+         }
+			printf("user %s successfuly logged in\n", uname_cpy);
 			logged_in = true;
 			sem_wait(socket_map_sem);
-			hash_add(*socket_map, uname, strlen((char*)uname), &mail_socket_descriptor, sizeof(uint32_t));
+			hash_add(*socket_map, uname_cpy, strlen(uname_cpy), &mail_socket_descriptor, sizeof(uint32_t));
 			sem_post(socket_map_sem);
 		}else{
 			send_ack(socket_descriptor, LOGIN_NACK);
+         gmp_printf("priv: %Zd\n",private_key);
+         gmp_printf("public: 1%Zd\n",public_key);
+
 			printf("user %s failed to log in\n", uname);
 		}
 	}else{
@@ -342,19 +396,23 @@ int setup (char *portstr)
 		errexit("cannot create socket", NULL);
 
 	int val = 1;
-	setsockopt(sd, SOL_SOCKET,SO_REUSEPORT | SO_REUSEADDR, &val, sizeof(val));
+	setsockopt(sd, SOL_SOCKET,SO_REUSEPORT, &val, sizeof(val));
 	/* bind the socket */
 	if (bind (sd, (struct sockaddr *)&sin, sizeof(sin)) < 0)
 		errexit ("cannot bind to port %s", portstr);
 
+   printf("Listening on port %s\n",portstr );
 	/* listen for incoming connections */
 	if (listen (sd, QLEN) < 0)
 		errexit ("cannot listen on port %s\n", portstr);
 
+   printf("Accepting on port %s\n",portstr);
 	/* accept a connection */
 	sd2 = accept (sd,&addr,&addrlen);
-	if (sd2 < 0)
-		errexit ("error accepting connection", NULL);
+	if (sd2 < 0){
+		errexit ("error accepting connection: %s",strerror(errno));
+   }
+   close(sd);
 
 	return sd2;
 
