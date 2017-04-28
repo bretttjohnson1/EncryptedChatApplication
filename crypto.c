@@ -35,7 +35,7 @@ void gen_rand_prime(mpz_t key, int size){
 			mpz_init(offset);
 			mpz_set_ui(offset,256);
 			mpz_pow_ui(offset,offset,a);
-			mpz_mul_ui(offset,offset,rand_val[a]);
+			mpz_mul_ui(offset,offset,rand_val[a]%254+1);
 			mpz_add(key,key,offset);
 			mpz_clear(offset);
 		}
@@ -49,13 +49,15 @@ void read_local_public_key_from_file(mpz_t public_key){
 void read_local_private_key_from_file(mpz_t private_key){
    read_key_from_file(private_key, (char*)privatekeyfilename);
 }
-void read_key_from_file(mpz_t key,char *filename){
+bool read_key_from_file(mpz_t key,char *filename){
    mpz_init(key);
    FILE *key_file = fopen(filename,"rb");
-   char key_data[ENCRYPED_BLOCK_SIZE];
+   if(key_file == NULL)return false;
+   uint8_t key_data[ENCRYPED_BLOCK_SIZE];
    fread(key_data,ENCRYPED_BLOCK_SIZE,sizeof(uint8_t),key_file);
    mpz_import(key,ENCRYPED_BLOCK_SIZE,1,sizeof(uint8_t),1,0,key_data);
    fclose(key_file);
+   return true;
 }
 void write_key_to_file(mpz_t key,char *filename){
    FILE *key_file = fopen(filename,"wb");

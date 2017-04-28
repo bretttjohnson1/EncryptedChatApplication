@@ -16,7 +16,7 @@ int msg_size_to_encrypted_msg_size(int msg_size);
 int encrypted_msg_size_to_msg_size(int msg_size);
 void fillrandom(void *val,int sizeinbytes);
 void fillzero(void *val,int sizeinbytes);
-void read_key_from_file(mpz_t public_key,char *filename);
+bool read_key_from_file(mpz_t public_key,char *filename);
 void write_key_to_file(mpz_t key,char *filename);
 void read_local_public_key_from_file(mpz_t public_key);
 void read_local_private_key_from_file(mpz_t private_key);

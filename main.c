@@ -8,24 +8,32 @@
 
 
 int main(){
-   mpz_t pub_key,priv_key,modulus;
-   generate_keys(pub_key,priv_key,modulus);
-   gmp_printf("Public Key:%Zd\nPrivate Key:%Zd\nModulus:    %Zd\n",pub_key,priv_key,modulus);
-   unsigned char *msg = calloc(MAX_DATA_SIZE,1);
-   for(int i = 0;i<MAX_DATA_SIZE;i++)msg[i] = 'a'+ i%25;
-   unsigned char *encrypted = calloc(ENCRYPED_BLOCK_SIZE,1);
-   unsigned char *recoveredtext =  calloc(BLOCK_SIZE,1);
-   printf("Modulus_bits: %ld\n", mpz_sizeinbase(modulus,256));
-   encrypt_block(msg,encrypted,pub_key,modulus);
-   printf("encrypted msg: ");
-   for(int i = 0;i<ENCRYPED_BLOCK_SIZE;i++){
-      printf("%02x", encrypted[i]);
+   generate_and_store_keys();
+   mpz_t public_key;
+   read_local_public_key_from_file(public_key);
+   mpz_t private_key;
+   read_local_private_key_from_file(private_key);
+   mpz_t key_exp;
+   mpz_init_set_ui(key_exp,PUB_KEY_EXP);
+
+   uint8_t token[MAX_DATA_SIZE];
+   fillrandom(token, MAX_DATA_SIZE);
+   for(int i = 0;i<MAX_DATA_SIZE;i++){
+      printf("%02x",token[i]);
    }
    printf("\n");
-   decrypt_block(encrypted,recoveredtext,priv_key,modulus);
-   printf("decrypted msg: ");
-   for(int i = 0;i<BLOCK_SIZE;i++){
-      printf("%c", recoveredtext[i]);
+   uint8_t newtoken[REAL_MAX_DATA_SIZE];
+   encrypt_block(token, newtoken, key_exp, public_key);
+   printf("\n");
+   for(int i = 0;i<MAX_DATA_SIZE;i++){
+      printf("%02x",newtoken[i]);
+   }
+   printf("\n");
+   uint8_t newnewtoken[MAX_DATA_SIZE];
+   decrypt_block(newtoken, newnewtoken, private_key, public_key);
+   printf("\n");
+   for(int i = 0;i<MAX_DATA_SIZE;i++){
+      printf("%02x",newnewtoken[i]);
    }
    printf("\n");
 }
