@@ -35,6 +35,7 @@ sem_t *socket_write_sem;
 sem_t *socket_map_sem;
 hashmap *socket_map;
 int init_len_hashmap = 40;
+const int portrange = 2000;
 
 int main(int argc,char **argv){
 	opterr = 0;
@@ -55,6 +56,7 @@ int main(int argc,char **argv){
 	}
 	if(numargs!=1) {
 		printf("ERROR: MISSING ARGS\n");
+      printf("Usage: ./server -p port\n");
 		exit(1);
 	}
 	//if(!has_generated_key()) {
@@ -76,7 +78,7 @@ int main(int argc,char **argv){
 	while(1) {
       uint16_t rand;
       fillrandom(&rand, sizeof(rand));
-      uint32_t currentport= atoi(portstr)+rand%2000;
+      uint32_t currentport= atoi(portstr)+rand%portrange;
 		//send the connection ports
 		printf("Setting Up At:%s\n",portstr);
 		uint32_t port_sock_desc = setup(portstr);
@@ -195,6 +197,7 @@ void handle_req_key(data_packet packet,uint32_t socket_descriptor){
 	char src_name[NAME_SIZE];
 	char rcpt_name[NAME_SIZE];
 	read_msg_metadata(&msg_m, src_name, rcpt_name);
+   printf("srcname %s\n",src_name);
 	strcat((char *)src_name,"_pub.key");
 	mpz_t public_key;
 	bool key_exists = read_key_from_file(public_key, src_name);

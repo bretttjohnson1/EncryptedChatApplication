@@ -51,6 +51,7 @@ int main(int argc, char **argv){
 	}
 	if(numargs!=2) {
 		printf("ERROR: MISSING ARGS\n");
+      printf("Usage ./client -p port -h host\n" );
 		exit(1);
 	}
 	if(!has_generated_key()) {
@@ -117,7 +118,6 @@ void command_loop(int socket_descriptor,int mail_socket_descriptor,mpz_t server_
 				if(loggedinack == LOGIN_ACK) {
 					int existsack = receive_ack(socket_descriptor);
 					if(existsack == LOGIN_ACK) {
-
 						uint8_t token[ENCRYPED_BLOCK_SIZE];
 						mpz_t public_key;
 						read_local_public_key_from_file(public_key);
@@ -225,7 +225,7 @@ void command_loop(int socket_descriptor,int mail_socket_descriptor,mpz_t server_
          printf("If you wish to register a new username, type /genkeys and then register another username\nBe careful, once you generate new keys, the old user is gone forever\n");
          printf("To see who is online, type /listonline\n");
          printf("To message an online user, type /msg [rcpt] [message]\n");
-         printf("To message all online users, type /malll [message]\n");
+         printf("To message all online users, type /mall [message]\n");
          printf("To exit, type /exit\n");
 
       }else{
@@ -270,7 +270,6 @@ bool get_public_key_from_name(char *name,mpz_t public_key,uint32_t socket_descri
 	fill_msg_metadata(&msg_m, name, rcpt_name);
 	metadata meta;
 	meta.data_len = MAX_DATA_SIZE;
-
 	write_msg_metadata_to_data(meta.meta_data, &msg_m);
 	raw_data_to_data_packet(&packet, REQ_KEY_PROT, data, &meta, NULL);
 	write_data(&packet, sizeof(data_packet), socket_descriptor);
@@ -396,10 +395,6 @@ void send_login_request(char *uname,int uname_len,int socket_descriptor){
 	uint8_t data[MAX_DATA_SIZE];
 	meta.data_len = MAX_DATA_SIZE;
 	msg_metadata msg_m;
-	/*msg_m.src_name_len = uname_len;
-	   for(int i =0;i<uname_len && i<NAME_SIZE;i++){
-	   msg_m.rcpt_name[i] = uname[i];
-	   }*/
 	char rcpt_name[NAME_SIZE];
 	fill_msg_metadata(&msg_m, uname,rcpt_name);
 

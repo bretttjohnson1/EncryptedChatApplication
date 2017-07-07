@@ -21,7 +21,8 @@
 
 const char publickeyfilename[] = "localpublickey.key";
 const char privatekeyfilename[] = "localprivatekey.key";
-
+const int byte_size_bits = 256;
+const int num_iter  = 100;
 
 void gen_rand_prime(mpz_t key, int size){
 	mpz_init(key);
@@ -33,13 +34,13 @@ void gen_rand_prime(mpz_t key, int size){
 		for(int a =0; a<size; a++) {
 			mpz_t offset;
 			mpz_init(offset);
-			mpz_set_ui(offset,256);
+			mpz_set_ui(offset,byte_size_bits);
 			mpz_pow_ui(offset,offset,a);
 			mpz_mul_ui(offset,offset,rand_val[a]%254+1);
 			mpz_add(key,key,offset);
 			mpz_clear(offset);
 		}
-		isprime = (mpz_probab_prime_p(key,200)==1);
+		isprime = (mpz_probab_prime_p(key,num_iter)==1);
 	}
 }
 
@@ -146,7 +147,7 @@ void raise_block(unsigned char *original_text,unsigned char *modified_text, mpz_
 	for(int i = 0; i<oldsize; i++) {
 		mpz_mul_ui(raised_val,offset,original_text[i]);
 		mpz_add(msg_as_mpz,msg_as_mpz,raised_val);
-		mpz_mul_ui(offset,offset,256);
+		mpz_mul_ui(offset,offset,byte_size_bits);
 	}
 	mpz_clear(raised_val);
 	mpz_clear(offset);
@@ -154,7 +155,7 @@ void raise_block(unsigned char *original_text,unsigned char *modified_text, mpz_
 	mpz_t offset_small;
 	mpz_init(offset);
 	mpz_init(offset_small);
-	mpz_set_ui(offset,256);
+	mpz_set_ui(offset,byte_size_bits);
 	mpz_set_ui(offset_small,1);
 	for(int i = 0; i<newsize; i++) {
 		mpz_t bigmod;
@@ -168,8 +169,8 @@ void raise_block(unsigned char *original_text,unsigned char *modified_text, mpz_
 		modified_text[i] = mpz_get_ui(bigmod);
 		mpz_clear(bigmod);
 		mpz_clear(smallmod);
-		mpz_mul_ui(offset,offset,256);
-		mpz_mul_ui(offset_small,offset_small,256);
+		mpz_mul_ui(offset,offset,byte_size_bits);
+		mpz_mul_ui(offset_small,offset_small,byte_size_bits);
 	}
 	mpz_clear(msg_as_mpz);
 	mpz_clear(offset);

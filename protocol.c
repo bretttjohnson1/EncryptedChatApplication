@@ -143,7 +143,7 @@ void remove_newline(char *str,int len){
 
 void remove_extraneous(char *str,int len){
    for(int i = 0;i<len;i++){
-      if(str[i]<32 || str[i]>125)
+      if(str[i]<' ' || str[i]>'}')
          str[i] = '\0';
    }
 }

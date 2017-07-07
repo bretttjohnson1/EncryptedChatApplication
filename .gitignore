@@ -1,0 +1,4 @@
+*.o
+*.key
+server
+client
